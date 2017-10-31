@@ -5,7 +5,7 @@ import sys
 import time
 import threading
 import argparse
-from telemetric.client import init, open_sockets, tcp_loop, udp_loop
+from telemetric import TMClient
 
 ###############################################################################
 # Main
@@ -46,23 +46,7 @@ parser.add_argument("--json-dump",
 
 # Parse all arguments and bind to the specified IP address and port
 args = parser.parse_args(sys.argv[1:])
-tcp_sock, udp_sock = open_sockets(args.ip_address, args.port)
-init(args.protos)
-
-# Spawn threads to listen on the TCP and UDP sockets
-kwargs = {'json_dump': args.json_dump,
-          'print_all': args.print_all}
-tcp_thread = threading.Thread(target=tcp_loop, args=(tcp_sock,), kwargs=kwargs)
-tcp_thread.daemon = True
-tcp_thread.start()
-
-udp_thread = threading.Thread(target=udp_loop, args=(udp_sock,), kwargs=kwargs)
-udp_thread.daemon = True
-udp_thread.start()
-
-done = False
-while not done:
-    try:
-        time.sleep(60)
-    except KeyboardInterrupt:
-        done = True
+client = TMClient(args.protos, args.ip_address, args.port,
+                  json_dump=json_dump,
+                  print_all=print_all)
+client.run()

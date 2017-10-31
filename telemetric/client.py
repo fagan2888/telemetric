@@ -10,13 +10,52 @@ from .util import print_json
 from .gpb import GPBDecoder
 
 logger = logging.getLogger()
+TCP_FLAG_ZLIB_COMPRESSION = 0x1
 
-def init(protos):
-    global gpbdecoder #FIXME: create a proper client class that holds this
-    gpbdecoder = GPBDecoder(protos)
+# Should use enum.Enum but not available in python2.7.1 on EnXR
+class TCPMsgType(object):
+    RESET_COMPRESSOR = 1
+    JSON = 2
+    GPB_COMPACT = 3
+    GPB_KEY_VALUE = 4
+
+    @classmethod
+    def to_string(self, value):
+        if value == TCPMsgType.RESET_COMPRESSOR:
+            return "RESET_COMPRESSOR (1)"
+        elif value == TCPMsgType.JSON:
+            return "JSON (2)"
+        elif value == TCPMsgType.GPB_COMPACT:
+            return "GPB_COMPACT (3)"
+        elif value == TCPMsgType.GPB_KEY_VALUE:
+            return "GPB_KEY_VALUE (4)"
+        else:
+            raise ValueError("{} is not a valid TCP message type".format(value))
 
 def unpack_int(raw_data):
     return struct.unpack_from(">I", raw_data, 0)[0]
+
+def open_sockets(ip_address, port):
+    # Figure out if the supplied address is ipv4 or ipv6 and set the socet type
+    # appropriately
+    if is_ipv4(ip_address):
+        socket_type = socket.AF_INET
+    elif is_ipv6(ip_address):
+        socket_type = socket.AF_INET6
+    else:
+        raise AttributeError("Invalid ip address ", ip_address)
+
+    # Bind to two sockets to handle either UDP or TCP data
+    udp_sock = socket.socket(socket_type, socket.SOCK_DGRAM)
+    udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    udp_sock.bind((ip_address, port))
+
+    tcp_sock = socket.socket(socket_type)
+    tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    tcp_sock.bind((ip_address, port))
+    tcp_sock.listen(1)
+
+    return tcp_sock, udp_sock
 
 class JSONv1Handler(object):
     """
@@ -41,7 +80,7 @@ class JSONv1Handler(object):
                 data = data[msg_length:]
                 yield 2, msg
 
-    def get_message(self, length, conn):
+    def get_message(self, length, conn, json_dump=False, print_all=True):
         logger.info("  Message Type: JSONv1 (COMPRESSED)")
         data = b""
         while len(data) < length:
@@ -60,7 +99,7 @@ class JSONv1Handler(object):
                 logger.info("  Message TLV")
                 c_msg = x[1]
                 j_msg_b = self.deco.decompress(c_msg)
-                if args.json_dump:
+                if json_dump:
                     # Print the message as-is
                     print(j_msg_b)
                 else:
@@ -84,7 +123,7 @@ class JSONv2Handler(object):
         else:
             return "|".join(strings)
 
-    def get_message(self, msg_type, conn):
+    def get_message(self, msg_type, conn, json_dump=False, print_all=True):
         try:
             msg_type_str = TCPMsgType.to_string(msg_type)
             logger.info("  Message Type: {})".format(msg_type_str))
@@ -118,13 +157,13 @@ class JSONv2Handler(object):
         logger.info("Decoding message")
         try:
             if msg_type == TCPMsgType.GPB_COMPACT:
-                gpbdecoder.decode_compact(msg, json_dump=args.json_dump,
-                                          print_all=args.print_all)
+                gpbdecoder.decode_compact(msg, json_dump=json_dump,
+                                          print_all=print_all)
             elif msg_type == TCPMsgType.GPB_KEY_VALUE:
-                gpbdecoder.decode_kv(msg, json_dump=args.json_dump,
-                                     print_all=args.print_all)
+                gpbdecoder.decode_kv(msg, json_dump=json_dump,
+                                     print_all=print_all)
             elif msg_type == TCPMsgType.JSON:
-                if args.json_dump:
+                if json_dump:
                     # Print the message as-is
                     print(msg)
                 else:
@@ -135,96 +174,80 @@ class JSONv2Handler(object):
         except Exception as err:
             logger.error("failed to decode TCP message: {}".format(err))
 
-# Should use enum.Enum but not available in python2.7.1 on EnXR
-class TCPMsgType(object):
-    RESET_COMPRESSOR = 1
-    JSON = 2
-    GPB_COMPACT = 3
-    GPB_KEY_VALUE = 4
+class TMClient(object):
+    def __init__(self, protos, ipaddress, port, json_dump=False, print_all=True):
+        self.gpbdecoder = GPBDecoder(protos)
+        self.v1handler = JSONv1Handler()
+        self.v2handler = JSONv2Handler()
+        self.ipaddress = ipaddress
+        self.port = port
+        self.json_dump = json_dump
+        self.print_all = print_all
 
-    @classmethod
-    def to_string(self, value):
-        if value == TCPMsgType.RESET_COMPRESSOR:
-            return "RESET_COMPRESSOR (1)"
-        elif value == TCPMsgType.JSON:
-            return "JSON (2)"
-        elif value == TCPMsgType.GPB_COMPACT:
-            return "GPB_COMPACT (3)"
-        elif value == TCPMsgType.GPB_KEY_VALUE:
-            return "GPB_KEY_VALUE (4)"
+    def get_message(self, conn):
+        """
+        Handle a received TCP message.
+
+        @type conn: socket
+        @param conn: The TCP connection
+        """
+        logger.info("Getting TCP message")
+
+        # v1 message header (from XR6.0) consists of just a 4-byte length
+        # v2 message header (from XR6.1 onwards) consists of 3 4-byte fields:
+        #     Type,Flags,Length
+        # If the first 4 bytes read is <=4 then it is too small to be a
+        # valid length. Assume it is v2 instead
+        t = conn.recv(4)
+        msg_type = unpack_int(t)
+        if msg_type > 4: # V1 message - compressed JSON
+            handler = v1handler
         else:
-            raise ValueError("{} is not a valid TCP message type".format(value))
+            handler = v2handler
 
-TCP_FLAG_ZLIB_COMPRESSION = 0x1
-v1handler = JSONv1Handler()
-v2handler = JSONv2Handler()
+        # V2 message
+        return handler.get_message(msg_type, conn,
+                                   json_dump=self.json_dump,
+                                   print_all=self.print_all)
 
-def get_message(conn, json_dump=False, print_all=True):
-    """
-    Handle a received TCP message.
+    def _tcp_loop(self, tcp_sock):
+        """
+        Event Loop. Wait for TCP messages and pretty-print them
+        """
+        while True:
+            logger.info("Waiting for TCP connection")
+            conn, addr = tcp_sock.accept()
+            logger.info("Got TCP connection")
+            try:
+                while True:
+                     self.get_message(conn)
+            except Exception as e:
+                logger.error("Failed to get TCP message. Attempting to reopen connection: {}".format(e))
 
-    @type conn: socket
-    @param conn: The TCP connection
-    """
-    logger.info("Getting TCP message")
+    def _udp_loop(self, udp_sock):
+        """
+        Event loop. Wait for messages and then pretty-print them
+        """
+        while True:
+            logger.info("Waiting for UDP message")
+            raw_message, address = udp_sock.recvfrom(2**16)
+            # All UDP packets contain compact GPB messages
+            gpbdecoder.decode_compact(raw_message,
+                                      json_dump=self.json_dump,
+                                      print_all=self.print_all)
 
-    # v1 message header (from XR6.0) consists of just a 4-byte length
-    # v2 message header (from XR6.1 onwards) consists of 3 4-byte fields:
-    #     Type,Flags,Length
-    # If the first 4 bytes read is <=4 then it is too small to be a
-    # valid length. Assume it is v2 instead
-    t = conn.recv(4)
-    msg_type = unpack_int(t)
-    if msg_type > 4: # V1 message - compressed JSON
-        return v1handler.get_message(msg_type, conn)
+    def run(self):
+        tcp_sock, udp_sock = open_sockets(self.ipaddress, self.port)
+        tcp_thread = threading.Thread(target=self._tcp_loop, args=(tcp_sock,))
+        tcp_thread.daemon = True
+        tcp_thread.start()
 
-    # V2 message
-    return v2handler.get_message(msg_type, conn)
+        udp_thread = threading.Thread(target=self._udp_loop, args=(udp_sock,))
+        udp_thread.daemon = True
+        udp_thread.start()
 
-def tcp_loop(tcp_sock, json_dump=False, print_all=True):
-    """
-    Event Loop. Wait for TCP messages and pretty-print them
-    """
-    while True:
-        print("Waiting for TCP connection")
-        conn, addr = tcp_sock.accept()
-        print("Got TCP connection")
-        try:
-            while True:
-                 get_message(conn, json_dump=json_dump, print_all=print_all)
-        except Exception as e:
-            print("ERROR: Failed to get TCP message. Attempting to reopen connection: {}".format(e))
-
-def udp_loop(udp_sock, json_dump=False, print_all=True):
-    """
-    Event loop. Wait for messages and then pretty-print them
-    """
-    while True:
-        logger.info("Waiting for UDP message")
-        raw_message, address = udp_sock.recvfrom(2**16)
-        # All UDP packets contain compact GPB messages
-        gpbdecoder.decode_compact(raw_message,
-                                  json_dump=json_dump,
-                                  print_all=print_all)
-
-def open_sockets(ip_address, port):
-    # Figure out if the supplied address is ipv4 or ipv6 and set the socet type
-    # appropriately
-    if is_ipv4(ip_address):
-        socket_type = socket.AF_INET
-    elif is_ipv6(ip_address):
-        socket_type = socket.AF_INET6
-    else:
-        raise AttributeError("Invalid ip address ", ip_address)
-
-    # Bind to two sockets to handle either UDP or TCP data
-    udp_sock = socket.socket(socket_type, socket.SOCK_DGRAM)
-    udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    udp_sock.bind((ip_address, port))
-
-    tcp_sock = socket.socket(socket_type)
-    tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    tcp_sock.bind((ip_address, port))
-    tcp_sock.listen(1)
-
-    return tcp_sock, udp_sock
+        while True:
+            try:
+                time.sleep(60)
+            except KeyboardInterrupt:
+                return
