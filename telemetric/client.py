@@ -75,9 +75,8 @@ class JSONv1Handler(object):
                 yield 1, None
             elif _type == 2:
                 msg_length = unpack_int(data)
-                data = data[4:]
-                msg = data[:msg_length]
-                data = data[msg_length:]
+                msg = data[4:msg_length]
+                data = data[4+msg_length:]
                 yield 2, msg
 
     def get_message(self, length, conn, json_dump=False, print_all=True):
@@ -86,25 +85,24 @@ class JSONv1Handler(object):
         while len(data) < length:
             data += conn.recv(length - len(data))
 
-        tlvs = []
-        for x in self.unpack_message(data):
-            tlvs.append(x)
-
-        #find the data
-        for x in tlvs:
-            if x[0] == 1:
+        for thetype, msg in self.unpack_message(data):
+            if thetype == 1:
                 logger.info("  Reset Compressor TLV")
                 self.deco = zlib.decompressobj()
-            if x[0] == 2:
+                continue
+
+            if thetype == 2:
                 logger.info("  Message TLV")
-                c_msg = x[1]
-                j_msg_b = self.deco.decompress(c_msg)
+                msg_b = self.deco.decompress(msg)
                 if json_dump:
                     # Print the message as-is
-                    print(j_msg_b)
+                    print(msg_b)
                 else:
                     # Decode and pretty-print the message
-                    print_json(j_msg_b)
+                    print_json(msg_b)
+                continue
+
+            raise ValueError('invalid TLV type: {}'.format(thetype))
 
 class JSONv2Handler(object):
     """
