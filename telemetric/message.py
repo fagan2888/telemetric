@@ -1,4 +1,4 @@
-class Message(object):
+class TMMessage(object):
     def __init__(self, msg_type, header, content):
         if msg_type not in (TCPMsgType.JSON,
                             TCPMsgType.GPB_COMPACT,

@@ -8,7 +8,7 @@ from Exscript.util.ipv4 import is_ip as is_ipv4
 from Exscript.util.ipv6 import is_ip as is_ipv6
 from .util import print_json
 from .gpb import GPBDecoder
-from .message import Message
+from .message import TMMessage
 
 logger = logging.getLogger()
 TCP_FLAG_ZLIB_COMPRESSION = 0x1
