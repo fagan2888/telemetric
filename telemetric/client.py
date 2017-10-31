@@ -8,6 +8,7 @@ from Exscript.util.ipv4 import is_ip as is_ipv4
 from Exscript.util.ipv6 import is_ip as is_ipv6
 from .util import print_json
 from .gpb import GPBDecoder
+from .message import Message
 
 logger = logging.getLogger()
 TCP_FLAG_ZLIB_COMPRESSION = 0x1
@@ -100,6 +101,10 @@ class JSONv1Handler(object):
                 else:
                     # Decode and pretty-print the message
                     print_json(msg_b)
+
+                #yield Message(TCPMsgType.JSON,
+                #              {},
+                #              msg_b)
                 continue
 
             raise ValueError('invalid TLV type: {}'.format(thetype))
@@ -124,9 +129,9 @@ class JSONv2Handler(object):
     def get_message(self, msg_type, conn, json_dump=False, print_all=True):
         try:
             msg_type_str = TCPMsgType.to_string(msg_type)
-            logger.info("  Message Type: {})".format(msg_type_str))
+            logger.info("  Message type: {})".format(msg_type_str))
         except Exception as err:
-            logger.error("  Invalid Message type: {}".format(msg_type))
+            logger.error("  Invalid message type: {}".format(msg_type))
 
         t = conn.recv(4)
         flags = unpack_int(t)
@@ -155,11 +160,13 @@ class JSONv2Handler(object):
         logger.info("Decoding message")
         try:
             if msg_type == TCPMsgType.GPB_COMPACT:
-                gpbdecoder.decode_compact(msg, json_dump=json_dump,
-                                          print_all=print_all)
+                message = gpbdecoder.decode_compact(msg, json_dump=json_dump,
+                                                    print_all=print_all)
+                #TODO: yield message
             elif msg_type == TCPMsgType.GPB_KEY_VALUE:
-                gpbdecoder.decode_kv(msg, json_dump=json_dump,
-                                     print_all=print_all)
+                message = gpbdecoder.decode_kv(msg, json_dump=json_dump,
+                                               print_all=print_all)
+                #TODO: yield message
             elif msg_type == TCPMsgType.JSON:
                 if json_dump:
                     # Print the message as-is
@@ -167,6 +174,10 @@ class JSONv2Handler(object):
                 else:
                     # Decode and pretty-print the message
                     print_json(msg)
+
+                #TODO: yield Message(TCPMsgType.JSON,
+                #              {},
+                #              msg_b)
             elif msg_type == TCPMsgType.RESET_COMPRESSOR:
                 self.deco = zlib.decompressobj()
         except Exception as err:
@@ -187,6 +198,8 @@ class TMClient(object):
         @type print_all: str
         @param print_all: Whether to print all messages to stdout.
         """
+        #TODO: the client should provide a callback for retrieving messages,
+        # making json_dump and print_all obsolete.
         self.gpbdecoder = GPBDecoder(protos or [])
         self.v1handler = JSONv1Handler()
         self.v2handler = JSONv2Handler()
@@ -202,6 +215,7 @@ class TMClient(object):
         @type conn: socket
         @param conn: The TCP connection
         """
+        #TODO: this method should yield messages.
         logger.info("Getting TCP message")
 
         # v1 message header (from XR6.0) consists of just a 4-byte length
@@ -225,6 +239,7 @@ class TMClient(object):
         """
         Event Loop. Wait for TCP messages and pretty-print them
         """
+        #TODO: this method should provide a callback for retrieving messages.
         while True:
             logger.info("Waiting for TCP connection")
             conn, addr = tcp_sock.accept()
@@ -239,6 +254,7 @@ class TMClient(object):
         """
         Event loop. Wait for messages and then pretty-print them
         """
+        #TODO: this method should provide a callback for retrieving messages.
         while True:
             logger.info("Waiting for UDP message")
             raw_message, address = udp_sock.recvfrom(2**16)

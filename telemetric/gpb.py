@@ -45,6 +45,7 @@ def print_compact_hdr(header):
     """
     Print the compact GPB message header
     """
+    #TODO: make this a method of the Message object
     print("Encoding:    {:#x}".format(header.encoding))
     print("Policy Name: {}".format(header.policy_name))
     print("Version:     {}".format(header.version))
@@ -65,6 +66,7 @@ def print_compact_msg(field, indent, print_all=True):
     @type :print_all: boolean
     @param :print_all: Whether to print all child messages, or just the first.
     """
+    #TODO: make this a method of the Message object
     for descriptor in field.DESCRIPTOR.fields:
         value = getattr(field, descriptor.name)
         if descriptor.type == descriptor.TYPE_MESSAGE:
@@ -100,6 +102,7 @@ def print_kv_hdr(header):
     """
     Print the key-value GPB message header
     """
+    #TODO: make this a method of the Message object
     print("Collection ID:   {}".format(header.collection_id))
     print("Base Path:       {}".format(header.base_path))
     print("Subscription ID: {}".format(header.subscription_identifier))
@@ -124,6 +127,7 @@ def print_kv_field(field, indent):
     """
     Pretty-print a TelemtryField message
     """
+    #TODO: make this a method of the Message object
     time = 0 if field.timestamp == 0 else timestamp_to_string(field.timestamp)
     
     # Find the datatype and print it
@@ -181,6 +185,8 @@ class GPBDecoder(object):
         """
         Decode and print a GPB compact message
         """
+        #TODO: instead of printing, this method should return or yield messages.
+        #The json_dump and print_all arguments should disappear.
         telemetry_pb2 = self.modules['telemetry_pb2']
         header = telemetry_pb2.TelemetryHeader()
         header.ParseFromString(message)
@@ -238,6 +244,8 @@ class GPBDecoder(object):
         """
         Decode and print a GPB key-value message
         """
+        #TODO: instead of printing, this method should return or yield messages.
+        #The json_dump and print_all arguments should disappear.
         telemetry_kv_pb2 = self.modules['telemetry_kv_pb2']
         header = telemetry_kv_pb2.Telemetry()
         header.ParseFromString(message)
