@@ -16,10 +16,13 @@ Telemetric is supported by [Procedure 8](https://procedure8.com). Get in touch i
 
 ### Example
 
-Work in progress.
+The following example prints all received messages to stdout.
 
 ```python
-from telemetric import tcclient
+from telemetric import TMClient
+
+client = TMClient('192.168.0.1', 8777, print_all=True)
+client.run()
 ```
 
 ## Documentation

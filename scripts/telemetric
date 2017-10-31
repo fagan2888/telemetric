@@ -46,7 +46,8 @@ parser.add_argument("--json-dump",
 
 # Parse all arguments and bind to the specified IP address and port
 args = parser.parse_args(sys.argv[1:])
-client = TMClient(args.protos, args.ip_address, args.port,
-                  json_dump=json_dump,
-                  print_all=print_all)
+client = TMClient(args.ip_address, args.port,
+                  protos=args.protos,
+                  json_dump=args.json_dump,
+                  print_all=args.print_all)
 client.run()

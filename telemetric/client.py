@@ -175,8 +175,21 @@ class JSONv2Handler(object):
             logger.error("failed to decode TCP message: {}".format(err))
 
 class TMClient(object):
-    def __init__(self, protos, ipaddress, port, json_dump=False, print_all=True):
-        self.gpbdecoder = GPBDecoder(protos)
+    def __init__(self, ipaddress, port, protos=None, json_dump=False,
+                 print_all=False):
+        """
+        @type ipaddress: str
+        @param ipaddress: An IPv4 or IPv6 address.
+        @type port: int
+        @param port: The port number
+        @type protos: list(str)
+        @param protos: A list of protobuf filenames to load schemas from.
+        @type json_dump: boolean
+        @param json_dump: Whether to dump all json output to stdout.
+        @type print_all: str
+        @param print_all: Whether to print all messages to stdout.
+        """
+        self.gpbdecoder = GPBDecoder(protos or [])
         self.v1handler = JSONv1Handler()
         self.v2handler = JSONv2Handler()
         self.ipaddress = ipaddress
