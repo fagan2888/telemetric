@@ -3,63 +3,138 @@ import json
 import zlib
 import struct
 import socket
+import logging
 from Exscript.util.ipv4 import is_ip as is_ipv4
 from Exscript.util.ipv6 import is_ip as is_ipv6
 from .util import print_json
 from .gpb import GPBDecoder
 
+logger = logging.getLogger()
+
 def init(protos):
     global gpbdecoder #FIXME: create a proper client class that holds this
     gpbdecoder = GPBDecoder(protos)
 
-##############################################################################
-# JSON v1 (Pre IOS XR 6.1.0)
-##############################################################################
-def unpack_v1_message(data):
-    while len(data) > 0:
-        _type = unpack_int(data)
-        data = data[4:]
+def unpack_int(raw_data):
+    return struct.unpack_from(">I", raw_data, 0)[0]
 
-        if _type == 1:
+class JSONv1Handler(object):
+    """
+    JSON v1 (Pre IOS XR 6.1.0)
+    """
+
+    def __init__(self):
+        self.deco = None
+
+    def unpack_message(self, data):
+        while len(data) > 0:
+            _type = unpack_int(data)
             data = data[4:]
-            yield 1, None
-        elif _type == 2:
-            msg_length = unpack_int(data)
-            data = data[4:]
-            msg = data[:msg_length]
-            data = data[msg_length:]
-            yield 2, msg
 
-def get_v1_message(length, c):
-    global v1_deco
+            if _type == 1:
+                data = data[4:]
+                yield 1, None
+            elif _type == 2:
+                msg_length = unpack_int(data)
+                data = data[4:]
+                msg = data[:msg_length]
+                data = data[msg_length:]
+                yield 2, msg
 
-    data = b""
-    while len(data) < length:
-        data += c.recv(length - len(data))
+    def get_message(self, length, conn):
+        logger.info("  Message Type: JSONv1 (COMPRESSED)")
+        data = b""
+        while len(data) < length:
+            data += conn.recv(length - len(data))
 
-    tlvs = []
-    for x in unpack_v1_message(data):
-        tlvs.append(x)
+        tlvs = []
+        for x in self.unpack_message(data):
+            tlvs.append(x)
 
-    #find the data
-    for x in tlvs:
-        if x[0] == 1:
-            print("  Reset Compressor TLV")
-            v1_deco = zlib.decompressobj()
-        if x[0] == 2:
-            print("  Mesage TLV")
-            c_msg = x[1]
-            j_msg_b = v1_deco.decompress(c_msg)
-            if args.json_dump:
-                # Print the message as-is
-                print(j_msg_b)
-            else:
-                # Decode and pretty-print the message
-                print_json(j_msg_b)
+        #find the data
+        for x in tlvs:
+            if x[0] == 1:
+                logger.info("  Reset Compressor TLV")
+                self.deco = zlib.decompressobj()
+            if x[0] == 2:
+                logger.info("  Message TLV")
+                c_msg = x[1]
+                j_msg_b = self.deco.decompress(c_msg)
+                if args.json_dump:
+                    # Print the message as-is
+                    print(j_msg_b)
+                else:
+                    # Decode and pretty-print the message
+                    print_json(j_msg_b)
 
-###############################################################################
-# Event handling
-############################################################################### 
+class JSONv2Handler(object):
+    """
+    JSON v2 (>= IOS XR 6.1.0)
+    """
+
+    def __init__(self):
+        self.deco = zlib.decompressobj()
+
+    def tcp_flags_to_string(self, flags):
+        strings = []
+        if flags & TCP_FLAG_ZLIB_COMPRESSION != 0:
+            strings.append("ZLIB compression")
+        if len(strings) == 0:
+            return "None"
+        else:
+            return "|".join(strings)
+
+    def get_message(self, msg_type, conn):
+        try:
+            msg_type_str = TCPMsgType.to_string(msg_type)
+            logger.info("  Message Type: {})".format(msg_type_str))
+        except Exception as err:
+            logger.error("  Invalid Message type: {}".format(msg_type))
+
+        t = conn.recv(4)
+        flags = unpack_int(t)
+        logger.info("  Flags: {}".format(self.tcp_flags_to_string(flags)))
+        t = conn.recv(4)
+        length = unpack_int(t)
+        logger.info("  Length: {}".format(length))
+
+        # Read all the bytes of the message according to the length in the header
+        data = b""
+        while len(data) < length:
+            data += conn.recv(length - len(data))
+
+        # Decompress the message if necessary. Otherwise use as-is
+        if flags & TCP_FLAG_ZLIB_COMPRESSION != 0:
+            try:
+                logger.info("Decompressing message")
+                msg = self.deco.decompress(data)
+            except Exception as err:
+                logger.error("failed to decompress message: {}".format(err))
+                msg = None
+        else:
+            msg = data
+
+        # Decode the data according to the message type in the header
+        logger.info("Decoding message")
+        try:
+            if msg_type == TCPMsgType.GPB_COMPACT:
+                gpbdecoder.decode_compact(msg, json_dump=args.json_dump,
+                                          print_all=args.print_all)
+            elif msg_type == TCPMsgType.GPB_KEY_VALUE:
+                gpbdecoder.decode_kv(msg, json_dump=args.json_dump,
+                                     print_all=args.print_all)
+            elif msg_type == TCPMsgType.JSON:
+                if args.json_dump:
+                    # Print the message as-is
+                    print(msg)
+                else:
+                    # Decode and pretty-print the message
+                    print_json(msg)
+            elif msg_type == TCPMsgType.RESET_COMPRESSOR:
+                self.deco = zlib.decompressobj()
+        except Exception as err:
+            logger.error("failed to decode TCP message: {}".format(err))
+
 # Should use enum.Enum but not available in python2.7.1 on EnXR
 class TCPMsgType(object):
     RESET_COMPRESSOR = 1
@@ -81,18 +156,8 @@ class TCPMsgType(object):
             raise ValueError("{} is not a valid TCP message type".format(value))
 
 TCP_FLAG_ZLIB_COMPRESSION = 0x1
-
-def tcp_flags_to_string(flags):
-    strings = []
-    if flags & TCP_FLAG_ZLIB_COMPRESSION != 0:
-        strings.append("ZLIB compression")
-    if len(strings) == 0:
-        return "None"
-    else:
-        return "|".join(strings)
-
-def unpack_int(raw_data):
-    return struct.unpack_from(">I", raw_data, 0)[0]
+v1handler = JSONv1Handler()
+v2handler = JSONv2Handler()
 
 def get_message(conn, json_dump=False, print_all=True):
     """
@@ -101,75 +166,20 @@ def get_message(conn, json_dump=False, print_all=True):
     @type conn: socket
     @param conn: The TCP connection
     """
-    print("Getting TCP message")
+    logger.info("Getting TCP message")
 
     # v1 message header (from XR6.0) consists of just a 4-byte length
     # v2 message header (from XR6.1 onwards) consists of 3 4-byte fields:
     #     Type,Flags,Length
-    # If the first 4 bytes read is <=4 then it is too small to be a 
+    # If the first 4 bytes read is <=4 then it is too small to be a
     # valid length. Assume it is v2 instead
     t = conn.recv(4)
     msg_type = unpack_int(t)
-    if msg_type > 4:
-        # V1 message - compressed JSON
-        flags = TCP_FLAG_ZLIB_COMPRESSION
-        msg_type_str = "JSONv1 (COMPRESSED)"
-        length = msg_type
-        msg_type = TCPMsgType.JSON
-        print("  Message Type: {}".format(msg_type_str))
-        return get_v1_message(length, conn)
+    if msg_type > 4: # V1 message - compressed JSON
+        return v1handler.get_message(msg_type, conn)
 
     # V2 message
-    try:
-        msg_type_str = TCPMsgType.to_string(msg_type)
-        print("  Message Type: {})".format(msg_type_str))
-    except:
-        print("  Invalid Message type: {}".format(msg_type))
-
-    t = conn.recv(4)
-    flags = unpack_int(t)
-    print("  Flags: {}".format(tcp_flags_to_string(flags)))
-    t = conn.recv(4)
-    length = unpack_int(t)
-    print("  Length: {}".format(length))
-   
-    # Read all the bytes of the message according to the length in the header 
-    data = b""
-    while len(data) < length:
-        data += conn.recv(length - len(data))
-
-    # Decompress the message if necessary. Otherwise use as-is
-    if flags & TCP_FLAG_ZLIB_COMPRESSION != 0:
-        try:
-            print("Decompressing message")
-            deco = zlib.decompressobj()
-            msg = deco.decompress(data)
-        except Exception as e:
-            print("ERROR: failed to decompress message: {}".format(e))
-            msg = None
-    else:
-        msg = data
-
-    # Decode the data according to the message type in the header
-    print("Decoding message")
-    try:
-        if msg_type == TCPMsgType.GPB_COMPACT:
-            gpbdecoder.decode_compact(msg, json_dump=args.json_dump,
-                                      print_all=args.print_all)
-        elif msg_type == TCPMsgType.GPB_KEY_VALUE:
-            gpbdecoder.decode_kv(msg, json_dump=args.json_dump,
-                                 print_all=args.print_all)
-        elif msg_type == TCPMsgType.JSON:
-            if args.json_dump:
-                # Print the message as-is
-                print(msg)
-            else:
-                # Decode and pretty-print the message
-                print_json(msg)
-        elif msg_type == TCPMsgType.RESET_COMPRESSOR:
-            deco = zlib.decompressobj()
-    except Exception as e:
-        print("ERROR: failed to decode TCP message: {}".format(e))
+    return v2handler.get_message(msg_type, conn)
 
 def tcp_loop(tcp_sock, json_dump=False, print_all=True):
     """
@@ -190,7 +200,7 @@ def udp_loop(udp_sock, json_dump=False, print_all=True):
     Event loop. Wait for messages and then pretty-print them
     """
     while True:
-        print("Waiting for UDP message")
+        logger.info("Waiting for UDP message")
         raw_message, address = udp_sock.recvfrom(2**16)
         # All UDP packets contain compact GPB messages
         gpbdecoder.decode_compact(raw_message,
@@ -203,7 +213,7 @@ def open_sockets(ip_address, port):
     if is_ipv4(ip_address):
         socket_type = socket.AF_INET
     elif is_ipv6(ip_address):
-        socket_type = socket.AF_INET6   
+        socket_type = socket.AF_INET6
     else:
         raise AttributeError("Invalid ip address ", ip_address)
 
