@@ -1,5 +1,7 @@
 from __future__ import print_function
 import os
+import sys
+import imp
 import json
 import re
 from google.protobuf.message import Message
@@ -36,7 +38,11 @@ def _parse_schema_from_proto(input_file):
 def _load_modules(filenames):
     modules = {}
     for filename in filenames:
-        module_name, ext = os.path.splitext(filename)
+        dirname = os.path.dirname(filename)
+        if dirname not in sys.path:
+            sys.path.append(dirname)
+        basename = os.path.basename(filename)
+        module_name, ext = os.path.splitext(basename)
         module = imp.load_source(module_name, filename)
         modules[module_name] = module
     return modules
@@ -161,18 +167,22 @@ def print_kv_field(field, indent):
         print_indent(indent, "}")
 
 class GPBDecoder(object):
-    def __init__(self, protos):
+    def __init__(self, protos, output_dir, include_dir):
         """
         Compile the telemetry proto files if they don't already exist and
         create a mapping between policy paths and proto files specified on the 
         command line.
         """
         # Build any proto files not already available
+        data_dir = os.path.join(os.path.dirname(__file__), 'data')
         proto_files = ["descriptor.proto",
                        "cisco.proto",
                        "telemetry.proto",
                        "telemetry_kv.proto"]
-        compiled_files = _compile_proto_file(proto_files + protos)
+        proto_files = [os.path.join(data_dir, f) for f in proto_files]
+        compiled_files = compile_proto_file(proto_files + protos,
+                                            output_dir,
+                                            include_dir)
         self.modules = _load_modules(compiled_files)
 
         # Load the decode methods from those modules.

@@ -25,29 +25,45 @@ parser.add_argument("--port",
 parser.add_argument("--protos",
                     required=False,
                     type=str,
-                    nargs = '*',
+                    nargs='*',
                     default=[],
-                    help = "List of .proto files to be received in messages")
+                    help="List of .proto files to be received in messages")
+
+parser.add_argument("--proto-output-dir",
+                    required=False,
+                    type=str,
+                    default='~/.telemetric/proto',
+                    help="Dump JSON messages instead of pretty-printing")
+
+parser.add_argument("--proto-include-dir",
+                    required=False,
+                    type=str,
+                    nargs='*',
+                    default=["."],
+                    help='Search the given path for precompiled protobuf files')
 
 parser.add_argument("--print-all",
                     required=False,
                     action='store_true',
-                    help = "Display data for all items instead of just the first")
+                    help="Display data for all items instead of just the first")
 
 parser.add_argument("--brief",
                     required=False,
                     action='store_true',
-                    help = "Only display message headers, no data")
+                    help="Only display message headers, no data")
 
 parser.add_argument("--json-dump",
                     required=False,
                     action='store_true',
-                    help = "Dump JSON messages instead of pretty-printing")
+                    help="Dump JSON messages instead of pretty-printing")
 
 # Parse all arguments and bind to the specified IP address and port
 args = parser.parse_args(sys.argv[1:])
+proto_include_dirs = [d for d in args.proto_include_dir if os.path.isdir(d)]
 client = TMClient(args.ip_address, args.port,
                   protos=args.protos,
+                  proto_output_dir=args.proto_output_dir,
+                  proto_include_dir=proto_include_dirs),
                   json_dump=args.json_dump,
                   print_all=args.print_all)
 client.run()

@@ -184,7 +184,10 @@ class JSONv2Handler(object):
             logger.error("failed to decode TCP message: {}".format(err))
 
 class TMClient(object):
-    def __init__(self, ipaddress, port, protos=None, json_dump=False,
+    def __init__(self, ipaddress, port, protos=None,
+                 proto_output_dir='~/.telemetric/proto',
+                 proto_include_dir=(),
+                 json_dump=False,
                  print_all=False):
         """
         @type ipaddress: str
@@ -200,7 +203,9 @@ class TMClient(object):
         """
         #TODO: the client should provide a callback for retrieving messages,
         # making json_dump and print_all obsolete.
-        self.gpbdecoder = GPBDecoder(protos or [])
+        self.gpbdecoder = GPBDecoder(protos or [],
+                                     proto_output_dir,
+                                     proto_include_dir)
         self.v1handler = JSONv1Handler()
         self.v2handler = JSONv2Handler()
         self.ipaddress = ipaddress

@@ -1,27 +1,35 @@
 from __future__ import absolute_import
 import os
-import imp
-from subprocess import check_call
+import sys
+from subprocess import check_call, CalledProcessError
 from google.protobuf.descriptor import FieldDescriptor
-
-data_dir = os.path.join(os.path.dirname(__file__), 'data')
 
 def compile_proto_file(input_files, output_path, include_path):
     """
-    Compile a .proto file using protoc. Returns the list of compiled filenames.
+    Compile a .proto file using protoc.
+    The compiled files are stored in the given output path.
+    Returns the list of compiled filenames.
     """
-    need_compile = []
+    # Init the output dir.
+    output_path = os.path.expanduser(output_path)
+    if not os.path.isdir(output_path):
+        os.makedirs(output_path)
+
+    # Assemble the include path.
+    include_path = ':'.join(os.path.expanduser(p) for p in include_path)
+
     compiled_names = []
     for filename in input_files:
-        filename = os.path.join(data_dir, filename)
+        filename = os.path.expanduser(filename)
 
         # Check if the file exists.
         if not os.path.isfile(filename):
             raise ValueError("file {} does not exist".format(filename))
 
         # Assemble compiled filename to return to caller.
-        basename, ext = os.path.splitext(filename)
-        compiled_name = basename + "_pb2.py"
+        basename = os.path.basename(filename)
+        name, ext = os.path.splitext(basename)
+        compiled_name = os.path.join(output_path, name + "_pb2.py")
         compiled_names.append(compiled_name)
 
         # Check if the file was already compiled.
@@ -29,11 +37,18 @@ def compile_proto_file(input_files, output_path, include_path):
             if os.path.getmtime(compiled_name) >= os.path.getmtime(filename):
                 continue
 
-        # Check if the compiled file is out of date.
-        need_compile.append(filename)
+        # Compile.
+        dirname = os.path.dirname(filename)
+        include = dirname + ':' + include_path
+        command = ["protoc", "--python_out", output_path, "-I", include]
+        try:
+            check_call(command + [filename])
+        except OSError:
+            sys.stderr.write("The program 'protoc' is required but not installed")
+            raise
+        except CalledProcessError:
+            raise
 
-    command = ["protoc", "--python_out", output_path, "-I", include_path] + need_compile
-    check_call(command)
     return compiled_names
 
 ###############################################################################

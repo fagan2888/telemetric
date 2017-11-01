@@ -21,7 +21,7 @@
 
 syntax = "proto2";
 
-import "google/protobuf/descriptor.proto";
+import "descriptor.proto";
 
 message CiscoMessageOptions {
     optional string schema_path = 1;
