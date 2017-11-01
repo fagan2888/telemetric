@@ -19,6 +19,8 @@
  * ----------------------------------------------------------------------------
  */
 
+syntax = "proto2";
+
 message Telemetry {
   optional uint64   collection_id = 1;
   optional string   base_path = 2;	

@@ -19,6 +19,8 @@
  * ----------------------------------------------------------------------------
  */
 
+syntax = "proto2";
+
 message TelemetryHeader {
   optional uint32 encoding = 1;
 
