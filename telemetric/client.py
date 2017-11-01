@@ -58,13 +58,24 @@ def open_sockets(ip_address, port):
 
     return tcp_sock, udp_sock
 
-class JSONv1Handler(object):
+class JSONHandler(object):
     """
-    JSON v1 (Pre IOS XR 6.1.0)
+    Abstract base.
     """
 
     def __init__(self):
-        self.deco = None
+        self.deco = zlib.decompressobj()
+
+    def get_data(self, conn, length):
+        data = b""
+        while len(data) < length:
+            data += conn.recv(length - len(data))
+        return data
+
+class JSONv1Handler(JSONHandler):
+    """
+    JSON v1 (Pre IOS XR 6.1.0)
+    """
 
     def unpack_message(self, data):
         while len(data) > 0:
@@ -82,9 +93,7 @@ class JSONv1Handler(object):
 
     def get_message(self, length, conn, json_dump=False, print_all=True):
         logger.info("  Message Type: JSONv1 (COMPRESSED)")
-        data = b""
-        while len(data) < length:
-            data += conn.recv(length - len(data))
+        data = self.get_data(conn, length)
 
         for thetype, msg in self.unpack_message(data):
             if thetype == 1:
@@ -109,14 +118,10 @@ class JSONv1Handler(object):
 
             raise ValueError('invalid TLV type: {}'.format(thetype))
 
-class JSONv2Handler(object):
+class JSONv2Handler(JSONHandler):
     """
     JSON v2 (>= IOS XR 6.1.0)
     """
-
-    def __init__(self):
-        self.deco = zlib.decompressobj()
-
     def tcp_flags_to_string(self, flags):
         strings = []
         if flags & TCP_FLAG_ZLIB_COMPRESSION != 0:
@@ -141,9 +146,7 @@ class JSONv2Handler(object):
         logger.info("  Length: {}".format(length))
 
         # Read all the bytes of the message according to the length in the header
-        data = b""
-        while len(data) < length:
-            data += conn.recv(length - len(data))
+        data = self.get_data(conn, length)
 
         # Decompress the message if necessary. Otherwise use as-is
         if flags & TCP_FLAG_ZLIB_COMPRESSION != 0:
