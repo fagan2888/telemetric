@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/knipknap/telemetric.svg?branch=master)](https://travis-ci.org/knipknap/telemetric)
 [![Coverage Status](https://coveralls.io/repos/github/knipknap/telemetric/badge.svg?branch=master)](https://coveralls.io/github/knipknap/telemetric?branch=master)
-[![Code Climate](https://lima.codeclimate.com/github/knipknap/telemetric/badges/gpa.svg)](https://lima.codeclimate.com/github/knipknap/telemetric)
+[![Maintainability](https://api.codeclimate.com/v1/badges/445ee46a9cbca31791ac/maintainability)](https://codeclimate.com/github/knipknap/telemetric/maintainability)
 [![Documentation Status](https://readthedocs.org/projects/telemetric/badge/?version=latest)](http://telemetric.readthedocs.io/en/latest/?badge=latest)
 
 ## Summary
