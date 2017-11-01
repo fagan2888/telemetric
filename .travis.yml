@@ -8,7 +8,7 @@ before_install:
   - "mkdir /tmp/protoc"
   - "wget https://github.com/google/protobuf/releases/download/v3.4.0/protoc-3.4.0-linux-x86_64.zip -O /tmp/protoc/protoc.zip"
   - "cd /tmp/protoc/; unzip protoc.zip"
-  - "export PATH=$PATH:$PWD"
+  - "export PATH=$PATH:$PWD/bin"
   - "cd -"
 install:
   - "pip install -r requirements.txt"
