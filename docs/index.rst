@@ -7,9 +7,9 @@
 .. image:: https://coveralls.io/repos/github/knipknap/telemetric/badge.svg?branch=master
     :target: https://coveralls.io/github/knipknap/telemetric?branch=master
 
-.. image:: https://lima.codeclimate.com/github/knipknap/telemetric/badges/gpa.svg
-    :target: https://lima.codeclimate.com/github/knipknap/telemetric
-    :alt: Code Climate
+.. image:: https://api.codeclimate.com/v1/badges/445ee46a9cbca31791ac/maintainability
+    :target: https://codeclimate.com/github/knipknap/telemetric/maintainability
+    :alt: Maintainability
 
 .. image:: https://img.shields.io/github/stars/knipknap/telemetric.svg   
     :target: https://github.com/knipknap/telemetric/stargazers
