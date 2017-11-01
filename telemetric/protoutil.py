@@ -4,6 +4,10 @@ import sys
 from subprocess import check_call, CalledProcessError
 from google.protobuf.descriptor import FieldDescriptor
 
+if sys.version_info[0] >= 3:
+    long = int
+    unicode = str
+
 def compile_proto_file(input_files, output_path, include_path):
     """
     Compile a .proto file using protoc.
