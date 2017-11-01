@@ -1,6 +1,3 @@
-.. image:: _static/logo.png
-    :target: http://telemetric.readthedocs.io
-
 .. image:: https://travis-ci.org/knipknap/telemetric.svg?branch=master
     :target: https://travis-ci.org/knipknap/telemetric
 
