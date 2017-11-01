@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 import os
 import sys
 import imp
@@ -6,8 +6,8 @@ import json
 import re
 from google.protobuf.message import Message
 from google.protobuf.descriptor import FieldDescriptor
-from protoutil import compile_proto_file, field_type_to_fn, proto_to_dict
-from util import print_indent, timestamp_to_string, bytes_to_string
+from .protoutil import compile_proto_file, field_type_to_fn, proto_to_dict
+from .util import print_indent, timestamp_to_string, bytes_to_string
 
 def _parse_schema_from_proto(input_file):
     """
