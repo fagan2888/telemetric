@@ -1,4 +1,5 @@
 *.py[co]
+*.eggs
 *.egg-info
 *.swp
 build
