@@ -21,8 +21,18 @@
 What is Telemetric?
 ===================
 
-Telemetric is a [Telemetry](https://www.ietf.org/archive/id/draft-wu-t2trg-network-telemetry-00.txt) client.
+Telemetric is a `Telemetry <https://www.ietf.org/archive/id/draft-wu-t2trg-network-telemetry-00.txt>`_ client.
 Telemetric is work in progress.
+
+Requirements
+------------
+
+Telemetric requires the `Google Protobuf Compiler <https://developers.google.com/protocol-buffers/docs/downloads>`_
+command line program (>=2.6.1) to run. The compiler is **not** automatically installed
+by the setup script (PIP).
+
+Telemetric also requires several Python modules, but they are automatically installed
+by the setup script. Please check the setup.py included with the package for a list.
 
 Development
 -----------
